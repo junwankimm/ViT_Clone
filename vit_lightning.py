@@ -11,11 +11,11 @@ from PIL import Image
 from torchvision.transforms import Compose, RandomCrop, RandomHorizontalFlip, ToTensor, Normalize
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange, Reduce
-from torchsummary import summary
 from torch.utils.data import DataLoader
 
 from torchvision.datasets import CIFAR10
 
+from lightning.pytorch.callbacks import ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 
 
@@ -132,7 +132,8 @@ class ViTLightning(L.LightningModule):
         self.model = ViT(in_channels=in_channels, patch_size=patch_size, forward_expansion=forward_expansion, img_size=img_size, depth=depth, n_classes=n_classes, **kwargs)
         self.num_correct = 0
         self.total = 0
-        # self.val_avg_loss = 0
+        self.train_dataset = None
+        self.val_dataset = None
         
     def training_step(self, batch, batch_idx):
         img, target = batch
@@ -146,7 +147,7 @@ class ViTLightning(L.LightningModule):
 
     def configure_optimizers(self):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, eta_min=1e-5)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max = 100, eta_min=1e-5)
         
         
         return [self.optimizer], [lr_scheduler]
@@ -161,7 +162,6 @@ class ViTLightning(L.LightningModule):
         loss = F.cross_entropy(img, target)
         
         self.total += target.size(0)
-        # self.val_avg_loss += loss
         
         output = torch.softmax(img, dim=1)
         pred, idx_ = output.max(-1)
@@ -169,53 +169,58 @@ class ViTLightning(L.LightningModule):
         
         self.log('val_acc', self.num_correct/self.total, on_step=False, on_epoch=True)
         self.log('val_avg_loss', loss, on_step=False, on_epoch=True, reduce_fx=torch.mean)
-            
-        
-        
-def main(args):
     
-    train_set = CIFAR10(root=args.root,
-                        train=True,
-                        download=True,
-                        transform=Compose([
+
+class CIFAR10DataModule(L.LightningDataModule):
+    def __init__(self, data_dir: str = './', batch_size: int = 512):
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+
+    def prepare_data(self):
+        transform_train = Compose([
                             RandomCrop(32, padding=4),
                             RandomHorizontalFlip(),
                             ToTensor(),
                             Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
                         ])
-    )
-    
-    test_set = CIFAR10(root=args.root,
-                       train=False,
-                       download=True,
-                       transform=Compose([
+
+        transform_val = Compose([
                            ToTensor(),
                            Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2023, 0.1994, 0.2010))
                        ])
-    )
+        
+        self.train_set = CIFAR10(root=self.data_dir,
+                        train=True,
+                        download=True,
+                        transform=transform_train
+        )
+
+        self.val_set = CIFAR10(root=self.data_dir,
+                       train=False,
+                       download=True,
+                       transform=transform_val
+        )
     
-    train_loader = DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True, num_workers=5)
-    test_loader = DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False, num_workers=5)
-    
-    model = ViT(img_size=args.img_size, n_classes=args.n_classes, patch_size=args.patch_size, forward_expansion=args.forward_expansion)
-    summary(model, train_set[0][0].shape, device='cpu')
-    
-    os.makedirs(args.log_dir, exist_ok=True)
-    wandb.init(project='ViT', name=args.name, config=args)
-    print("Start Training")
-    
-    
+    def train_dataloader(self):
+        return DataLoader(dataset=self.train_set, batch_size=self.batch_size, shuffle=True, num_workers=5, persistent_workers=True)
+
+    def val_dataloader(self):
+        return DataLoader(dataset=self.val_set, batch_size=self.batch_size, shuffle=False, num_workers=5)    
+
+        
+def main(args):
     model = ViTLightning(in_channels=3, patch_size=args.patch_size, forward_expansion=args.forward_expansion, img_size=args.img_size, depth=12, n_classes=10)
-    
+
     wandb.finish()
     wandb_logger = WandbLogger(log_model="all", project='ViT', name='lightning')
-    trainer = L.Trainer(accelerator='gpu', logger=wandb_logger, max_epochs=args.epoch)
-    trainer.fit(model= model, train_dataloaders=train_loader, val_dataloaders=test_loader)
+    trainer = L.Trainer(logger=wandb_logger, max_epochs=args.epoch, callbacks=[ModelSummary(max_depth=-1)])
+    trainer.fit(model= model, datamodule=CIFAR10DataModule(args.root, args.batch_size))
 
             
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='ViT')
-    parser.add_argument('--epoch', type=int, default=50)
+    parser.add_argument('--epoch', type=int, default=100)
     parser.add_argument('--img_size', type=int, default=32)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--n_classes', type=int, default=10)

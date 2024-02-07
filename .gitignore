@@ -1,9 +1,11 @@
-./CIFAR10/*
-./wandb/*
-./logs/*
-./lightning_logs/*
-./ViT/*
+CIFAR10/
+wandb/
+logs/
+lightning_logs/
+ViT/
 *.ckpt
 *.pth
 *.pt
 *.zip
+*.tar
+*.tar.gz
