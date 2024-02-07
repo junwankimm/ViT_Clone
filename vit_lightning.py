@@ -132,7 +132,7 @@ class ViTLightning(L.LightningModule):
         self.model = ViT(in_channels=in_channels, patch_size=patch_size, forward_expansion=forward_expansion, img_size=img_size, depth=depth, n_classes=n_classes, **kwargs)
         self.num_correct = 0
         self.total = 0
-        self.val_avg_loss = 0
+        # self.val_avg_loss = 0
         
     def training_step(self, batch, batch_idx):
         img, target = batch
@@ -140,7 +140,7 @@ class ViTLightning(L.LightningModule):
         loss = F.cross_entropy(img, target)
         
         self.log('train_loss', loss)
-        self.log('lr', self.lr_schedulers().get_lr()[0], on_epoch=True)
+        self.log('lr', self.lr_schedulers().get_lr()[0], on_step=False, on_epoch=True)
         
         return loss
 
@@ -161,15 +161,14 @@ class ViTLightning(L.LightningModule):
         loss = F.cross_entropy(img, target)
         
         self.total += target.size(0)
-        self.val_avg_loss += loss
+        # self.val_avg_loss += loss
         
         output = torch.softmax(img, dim=1)
         pred, idx_ = output.max(-1)
         self.num_correct += torch.eq(target, idx_).sum().item()
         
-        self.log('val_loss', loss/len(batch), on_epoch=True)
-        self.log('val_acc', self.num_correct/self.total, on_epoch=True)
-        self.log('val_avg_loss', self.val_avg_loss/len(batch), on_epoch=True)
+        self.log('val_acc', self.num_correct/self.total, on_step=False, on_epoch=True)
+        self.log('val_avg_loss', loss, on_step=False, on_epoch=True, reduce_fx=torch.mean)
             
         
         
@@ -211,7 +210,7 @@ def main(args):
     wandb.finish()
     wandb_logger = WandbLogger(log_model="all", project='ViT', name='lightning')
     trainer = L.Trainer(accelerator='gpu', logger=wandb_logger)
-    trainer.fit(model= model, train_dataloaders=train_loader, val_dataloaders=test_loader)
+    trainer.fit(model= model, train_dataloaders=train_loader, val_dataloaders=test_loader, max_epochs=args.epoch)
 
             
 if __name__ == '__main__':
@@ -221,7 +220,6 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--n_classes', type=int, default=10)
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--step_size', type=int, default=100)
     parser.add_argument('--root', type=str, default='./CIFAR10')
     parser.add_argument('--log_dir', type=str, default='./logs')
     parser.add_argument('--name', type=str, default='./ViT_CIFAR10')
