@@ -130,53 +130,47 @@ class ViTLightning(L.LightningModule):
     def __init__(self, in_channels: int = 3, patch_size: int = 4, forward_expansion: int = 2, img_size: int = 128, depth: int = 12, n_classes: int = 10, **kwargs):
         super().__init__()
         self.model = ViT(in_channels=in_channels, patch_size=patch_size, forward_expansion=forward_expansion, img_size=img_size, depth=depth, n_classes=n_classes, **kwargs)
-    
+        self.num_correct = 0
+        self.total = 0
+        self.val_avg_loss = 0
+        
     def training_step(self, batch, batch_idx):
         img, target = batch
         img = self.model(img)
         loss = F.cross_entropy(img, target)
         
-        # wandb.log({'train_loss' : loss})
+        self.log('train_loss', loss)
+        self.log('lr', self.lr_schedulers().get_lr()[0], on_epoch=True)
         
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, eta_min=1e-5)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=10, eta_min=1e-5)
         
-        return [optimizer], [lr_scheduler]
+        return [self.optimizer], [lr_scheduler]
     
     def validation_step(self, batch, batch_idx):
-        num_correct = 0
-        val_avg_loss = 0
-        total = 0
-        
+        if batch_idx == 0:
+            self.num_correct = 0
+            self.total = 0
+            self.val_avg_loss = 0
+
         img, target = batch
         img = self.model(img)
         loss = F.cross_entropy(img, target)
         
+        self.total += target.size(0)
+        self.val_avg_loss += loss
+        
         output = torch.softmax(img, dim=1)
         pred, idx_ = output.max(-1)
-        num_correct += torch.eq(target, idx_).sum().item()
-        total += target.size(0)
-        val_avg_loss += loss
+        self.num_correct += torch.eq(target, idx_).sum().item()
         
-        # wandb.log({'val_accuracy' : num_correct / total})
-        
-    # def test_step(self, batch, batch_idx):
-    #     img, target = batch
-    #     img = self.model(img)
-    #     loss = F.cross_entropy(img, target)
-        
-    #     wandb.log({'test_loss' : loss})
-    
-    # def predict_step(self, batch, batch_idx):
-    #     img, target = batch
-    #     img = self.model(img)
-        
-    #     return img
-        
-        
+        self.log('val_loss', loss/len(batch), on_epoch=True)
+        self.log('val_acc', self.num_correct/self.total, on_epoch=True)
+        self.log('val_avg_loss', self.val_avg_loss/len(batch), on_epoch=True)
+            
         
         
 def main(args):
