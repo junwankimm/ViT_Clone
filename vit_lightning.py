@@ -146,7 +146,8 @@ class ViTLightning(L.LightningModule):
 
     def configure_optimizers(self):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=10, eta_min=1e-5)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, eta_min=1e-5)
+        
         
         return [self.optimizer], [lr_scheduler]
     
@@ -154,7 +155,6 @@ class ViTLightning(L.LightningModule):
         if batch_idx == 0:
             self.num_correct = 0
             self.total = 0
-            self.val_avg_loss = 0
 
         img, target = batch
         img = self.model(img)
@@ -209,8 +209,8 @@ def main(args):
     
     wandb.finish()
     wandb_logger = WandbLogger(log_model="all", project='ViT', name='lightning')
-    trainer = L.Trainer(accelerator='gpu', logger=wandb_logger)
-    trainer.fit(model= model, train_dataloaders=train_loader, val_dataloaders=test_loader, max_epochs=args.epoch)
+    trainer = L.Trainer(accelerator='gpu', logger=wandb_logger, max_epochs=args.epoch)
+    trainer.fit(model= model, train_dataloaders=train_loader, val_dataloaders=test_loader)
 
             
 if __name__ == '__main__':
