@@ -1,0 +1,9 @@
+./CIFAR10/*
+./wandb/*
+./logs/*
+./lightning_logs/*
+./ViT/*
+*.ckpt
+*.pth
+*.pt
+*.zip

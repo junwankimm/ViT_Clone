@@ -122,7 +122,7 @@ class ViT(nn.Sequential):
         
 def main():
     parser = argparse.ArgumentParser(description='ViT')
-    parser.add_argument('--epoch', type=int, default=50)
+    parser.add_argument('--epoch', type=int, default=100)
     parser.add_argument('--img_size', type=int, default=32)
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--n_classes', type=int, default=10)

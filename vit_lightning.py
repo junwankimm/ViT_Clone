@@ -16,6 +16,9 @@ from torch.utils.data import DataLoader
 
 from torchvision.datasets import CIFAR10
 
+from pytorch_lightning.loggers import WandbLogger
+
+
 import lightning as L
 
 
@@ -133,7 +136,7 @@ class ViTLightning(L.LightningModule):
         img = self.model(img)
         loss = F.cross_entropy(img, target)
         
-        wandb.log({'train_loss' : loss})
+        # wandb.log({'train_loss' : loss})
         
         return loss
 
@@ -158,7 +161,7 @@ class ViTLightning(L.LightningModule):
         total += target.size(0)
         val_avg_loss += loss
         
-        wandb.log({'val_accuracy' : num_correct / total})
+        # wandb.log({'val_accuracy' : num_correct / total})
         
     # def test_step(self, batch, batch_idx):
     #     img, target = batch
@@ -198,8 +201,8 @@ def main(args):
                        ])
     )
     
-    train_loader = DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    test_loader = DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True, num_workers=5)
+    test_loader = DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False, num_workers=5)
     
     model = ViT(img_size=args.img_size, n_classes=args.n_classes, patch_size=args.patch_size, forward_expansion=args.forward_expansion)
     summary(model, train_set[0][0].shape, device='cpu')
@@ -210,14 +213,11 @@ def main(args):
     
     
     model = ViTLightning(in_channels=3, patch_size=args.patch_size, forward_expansion=args.forward_expansion, img_size=args.img_size, depth=12, n_classes=10)
-    trainer = L.Trainer(accelerator='gpu')
-    trainer.fit(model= model, train_dataloaders=train_loader, val_dataloaders=test_loader)
+    
     wandb.finish()
-    
-    
-    
-    
-
+    wandb_logger = WandbLogger(log_model="all", project='ViT', name='lightning')
+    trainer = L.Trainer(accelerator='gpu', logger=wandb_logger)
+    trainer.fit(model= model, train_dataloaders=train_loader, val_dataloaders=test_loader)
 
             
 if __name__ == '__main__':
