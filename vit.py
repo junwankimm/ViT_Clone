@@ -85,7 +85,7 @@ class FeedForwardBlock(nn.Sequential):
         )
 
 class TransformerEncoderBlock(nn.Sequential):
-    def __init__(self, emb_size: int = 768, drop_p: float = 0.0, forward_expansion: int = 4, forward_drop_p: float = 0.0, **kwargs):
+    def __init__(self, emb_size: int = 768, drop_p: float = 0.0, forward_expansion: int = 2, forward_drop_p: float = 0.0, **kwargs):
         super().__init__(
             ResidualAdd(nn.Sequential(
                 nn.LayerNorm(emb_size),
@@ -108,23 +108,23 @@ class ClassificationHead(nn.Sequential):
         )
 
 class TransformerEncoder(nn.Sequential):
-    def __init__(self, depth: int = 12, emb_size: int = 768, **kwargs):
+    def __init__(self, depth: int = 12, emb_size: int = 768, forward_expansion: int = 2, **kwargs):
         super().__init__(
             *[TransformerEncoderBlock(emb_size=emb_size, **kwargs) for _ in range(depth)]
         )
 class ViT(nn.Sequential):
-    def __init__(self, in_channels: int = 3, patch_size: int = 16, img_size: int = 128, depth: int = 12, n_classes: int = 10, **kwargs):
+    def __init__(self, in_channels: int = 3, patch_size: int = 4, forward_expansion: int = 2, img_size: int = 128, depth: int = 12, n_classes: int = 10, **kwargs):
         super().__init__(
             PatchEmbedding(in_channels=in_channels, patch_size=patch_size, img_size=img_size),
-            TransformerEncoder(depth=depth, emb_size=3*patch_size**2, **kwargs),
+            TransformerEncoder(depth=depth, emb_size=3*patch_size**2, forward_expansion=forward_expansion, **kwargs),
             ClassificationHead(emb_size=3*patch_size**2, n_classes=n_classes)
         )
         
 def main():
     parser = argparse.ArgumentParser(description='ViT')
-    parser.add_argument('--epoch', type=int, default=10)
+    parser.add_argument('--epoch', type=int, default=50)
     parser.add_argument('--img_size', type=int, default=32)
-    parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--n_classes', type=int, default=10)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--step_size', type=int, default=100)
@@ -132,6 +132,8 @@ def main():
     parser.add_argument('--log_dir', type=str, default='./logs')
     parser.add_argument('--name', type=str, default='./ViT_CIFAR10')
     parser.add_argument('--rank', type=int, default=0)
+    parser.add_argument('--patch_size', type=int, default=4)
+    parser.add_argument('--forward_expansion', type=int, default=2)
     
     args = parser.parse_args()
     device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
@@ -160,7 +162,7 @@ def main():
     train_loader = DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True, num_workers=4)
     test_loader = DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
     
-    model = ViT(img_size=args.img_size, n_classes=args.n_classes)
+    model = ViT(img_size=args.img_size, n_classes=args.n_classes, patch_size=args.patch_size, forward_expansion=args.forward_expansion)
     summary(model, train_set[0][0].shape, device='cpu')
     model = model.to(device)
     
@@ -187,16 +189,15 @@ def main():
             optimizer.step()
             
             wandb.log({'epoch' : epoch, 'train_loss' : loss.item()})
-            
-        save_path = os.path.join(args.log_dir, args.name, 'outputs')
-        os.makedirs(save_path, exist_ok=True)
-        ckpt = {'epoch' : epoch,
-                'model_state_dict' : model.state_dict(),
-                'optimizer_state_dict' : optimizer.state_dict(),
-                'scheduler_state_dict' : scheduler.state_dict()}
 
-        
-        torch.save(ckpt, os.path.join(save_path, f'ckpt_{epoch}.pth'))
+        if (epoch % 10 == 0):
+            save_path = os.path.join(args.log_dir, args.name, 'outputs')
+            os.makedirs(save_path, exist_ok=True)
+            ckpt = {'epoch' : epoch,
+                    'model_state_dict' : model.state_dict(),
+                    'optimizer_state_dict' : optimizer.state_dict(),
+                    'scheduler_state_dict' : scheduler.state_dict()}
+            torch.save(ckpt, os.path.join(save_path, f'ckpt_{epoch}.pth'))
         
         print(f'Validation Start : epoch {epoch}')
         model.eval()
@@ -224,7 +225,9 @@ def main():
         val_avg_loss = val_avg_loss / len(test_loader)
         print("avg_loss : {:.4f}".format(val_avg_loss))
         
-        wandb.log({'val_loss' : val_avg_loss, 'val_accuracy' : accuracy})
+        for param_group in optimizer.param_groups:
+            lr = param_group['lr']
+        wandb.log({'lr' : lr, 'val_loss' : val_avg_loss, 'val_accuracy' : accuracy})
     
         scheduler.step()
     wandb.finish()
