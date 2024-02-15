@@ -1,8 +1,9 @@
-./CIFAR10/*
-./wandb/*
-./logs/*
-./lightning_logs/*
-./ViT/*
+CIFAR10/
+stanford_cars/
+wandb/
+logs/
+lightning_logs/
+ViT/
 *.ckpt
 *.pth
 *.pt

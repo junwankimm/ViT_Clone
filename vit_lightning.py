@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
 
 from pytorch_lightning.loggers import WandbLogger
+from lightning.pytorch.callbacks import ModelSummary
 
 
 import lightning as L
@@ -112,6 +113,7 @@ class ClassificationHead(nn.Sequential):
             nn.LayerNorm(emb_size),
             nn.Linear(emb_size, n_classes)
         )
+        
 
 class TransformerEncoder(nn.Sequential):
     def __init__(self, depth: int = 12, emb_size: int = 768, forward_expansion: int = 2, **kwargs):
@@ -146,7 +148,7 @@ class ViTLightning(L.LightningModule):
 
     def configure_optimizers(self):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, eta_min=1e-5)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=100, eta_min=1e-5)
         
         
         return [self.optimizer], [lr_scheduler]
@@ -197,8 +199,9 @@ def main(args):
     train_loader = DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True, num_workers=5)
     test_loader = DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False, num_workers=5)
     
-    model = ViT(img_size=args.img_size, n_classes=args.n_classes, patch_size=args.patch_size, forward_expansion=args.forward_expansion)
-    summary(model, train_set[0][0].shape, device='cpu')
+    # model = ViT(img_size=args.img_size, n_classes=args.n_classes, patch_size=args.patch_size, forward_expansion=args.forward_expansion)
+    # summary(model, train_set[0][0].shape, device='cpu')
+    
     
     os.makedirs(args.log_dir, exist_ok=True)
     wandb.init(project='ViT', name=args.name, config=args)
@@ -206,6 +209,7 @@ def main(args):
     
     
     model = ViTLightning(in_channels=3, patch_size=args.patch_size, forward_expansion=args.forward_expansion, img_size=args.img_size, depth=12, n_classes=10)
+    print(ModelSummary(model))
     
     wandb.finish()
     wandb_logger = WandbLogger(log_model="all", project='ViT', name='lightning')
