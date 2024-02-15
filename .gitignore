@@ -1,5 +1,8 @@
 CIFAR10/
+<<<<<<< HEAD
 stanford_cars/
+=======
+>>>>>>> 84d86a1e4e3690efbd44a34b1405137c611d5303
 wandb/
 logs/
 lightning_logs/
@@ -8,3 +11,5 @@ ViT/
 *.pth
 *.pt
 *.zip
+*.tar
+*.tar.gz
